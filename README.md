@@ -2,3 +2,5 @@
 
 Camera2 實作的手動相機：手動對焦、快門時間、自動／手動 ISO、曝光補償。
 不做 HDR、景深、夜景等任何影像演算法；拍出的是感光元件經 JPEG 編碼的結果。
+
+this project is build by claude and is just for fun, no long term update guaranteed.
