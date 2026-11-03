@@ -10,7 +10,11 @@ Camera2 實作的手動相機：手動對焦、快門時間、自動／手動 IS
 2. 開啟儲存庫的 Actions 分頁，等待 build-apk 跑完（約 3 到 5 分鐘）。
 3. 點進該次執行，在 Artifacts 下載 m-camera-apk，解壓得到 app-debug.apk。
 
-方法 B：Android Studio
+方法 B：命令列
+1. 安裝 JDK 17 與 Android SDK，並設定環境變數 ANDROID_HOME（或在專案根目錄建立 local.properties，內容 sdk.dir=SDK 路徑）。
+2. 在專案根目錄執行 ./gradlew assembleDebug（Windows 用 gradlew.bat assembleDebug）。
+
+方法 C：Android Studio
 1. File > Open 選擇本資料夾，等待 Gradle 同步。
 2. Build > Build Bundle(s) / APK(s) > Build APK(s)。
    APK 位於 app/build/outputs/apk/debug/app-debug.apk。
