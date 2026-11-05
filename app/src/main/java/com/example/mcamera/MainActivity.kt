@@ -2,14 +2,13 @@ package com.example.mcamera
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
-import android.graphics.Typeface
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
@@ -22,19 +21,21 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.AttributeSet
 import android.util.Range
-import android.view.Gravity
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
-import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.SeekBar
-import android.widget.Switch
-import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.chip.Chip
+import com.google.android.material.color.DynamicColors
+import com.google.android.material.color.MaterialColors
+import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
+import com.google.android.material.slider.Slider
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.ln
@@ -45,7 +46,7 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /** 依指定長寬比縮放並置中的預覽畫面。 */
-class AutoFitTextureView(c: Context) : TextureView(c) {
+class AutoFitTextureView @JvmOverloads constructor(c: Context, a: AttributeSet? = null) : TextureView(c, a) {
     var rw = 3
     var rh = 4
     override fun onMeasure(wSpec: Int, hSpec: Int) {
@@ -56,10 +57,11 @@ class AutoFitTextureView(c: Context) : TextureView(c) {
     }
 }
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
+    private enum class Sel { FOCUS, SHUTTER, ISO, COMP }
+
     private lateinit var mgr: CameraManager
     private lateinit var chars: CameraCharacteristics
-    private lateinit var tv: AutoFitTextureView
     private var camId = ""
     private var cam: CameraDevice? = null
     private var session: CameraCaptureSession? = null
@@ -83,27 +85,35 @@ class MainActivity : Activity() {
     private var diopter = 0f
     private var comp = 0f
 
-    // 介面元件
-    private lateinit var rT: TextView
-    private lateinit var rI: TextView
-    private lateinit var rE: TextView
-    private lateinit var vF: TextView
-    private lateinit var vT: TextView
-    private lateinit var vI: TextView
-    private lateinit var vC: TextView
-    private lateinit var sbF: SeekBar
-    private lateinit var sbT: SeekBar
-    private lateinit var sbI: SeekBar
+    // 介面狀態
+    private var sel = Sel.SHUTTER
+    private var updating = false
+
+    private lateinit var tv: AutoFitTextureView
+    private lateinit var chipMeter: Chip
+    private lateinit var tgSel: MaterialButtonToggleGroup
+    private lateinit var tgMode: MaterialButtonToggleGroup
+    private lateinit var btnA: MaterialButton
+    private lateinit var btnB: MaterialButton
+    private lateinit var tileFocus: MaterialButton
+    private lateinit var tileShutter: MaterialButton
+    private lateinit var tileIso: MaterialButton
+    private lateinit var tileComp: MaterialButton
+    private lateinit var slider: Slider
+    private lateinit var fab: ExtendedFloatingActionButton
 
     private val tLo get() = max(expR.lower, 20_000L)
     private val tHi get() = min(expR.upper, 1_000_000_000L)
 
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
+        DynamicColors.applyToActivityIfAvailable(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         mgr = getSystemService(Context.CAMERA_SERVICE) as CameraManager
         pickCamera()
-        buildUi()
+        setContentView(R.layout.activity_main)
+        bindUi()
+        applySel()
         refresh()
         if (!hasPerm()) requestPermissions(arrayOf(Manifest.permission.CAMERA), 1)
     }
@@ -112,6 +122,7 @@ class MainActivity : Activity() {
         checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
     override fun onRequestPermissionsResult(code: Int, p: Array<out String>, r: IntArray) {
+        super.onRequestPermissionsResult(code, p, r)
         if (hasPerm() && tv.isAvailable) openCam()
     }
 
@@ -257,94 +268,120 @@ class MainActivity : Activity() {
         val lum = max(sum / wt, 1e-4)
         val target = 0.18 * 2.0.pow(comp.toDouble())
         val ev = log2(lum / target)
-        rE.text = "測光 %+.1f EV".format(ev)
+        showMeter(ev)
         if (autoIso && abs(ev) > 0.15) {
             val n = (iso * (target / lum).pow(0.5)).roundToInt().coerceIn(isoR.lower, isoR.upper)
-            if (n != iso) { iso = n; push(); refresh() }
+            if (n != iso) { iso = n; push(); refresh(sel == Sel.ISO) }
         }
+    }
+
+    /** 曝光接近目標時，測光標籤換成 tertiary 容器色。 */
+    private fun showMeter(ev: Double) {
+        val ok = abs(ev) < 0.4
+        val bgAttr = if (ok) com.google.android.material.R.attr.colorTertiaryContainer
+        else com.google.android.material.R.attr.colorSurfaceContainerHigh
+        val fgAttr = if (ok) com.google.android.material.R.attr.colorOnTertiaryContainer
+        else com.google.android.material.R.attr.colorOnSurface
+        chipMeter.text = "測光 %+.1f EV".format(ev)
+        chipMeter.chipBackgroundColor = ColorStateList.valueOf(MaterialColors.getColor(chipMeter, bgAttr))
+        chipMeter.setTextColor(MaterialColors.getColor(chipMeter, fgAttr))
     }
 
     // ───────── 介面 ─────────
 
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+    private fun bindUi() {
+        tv = findViewById(R.id.tv)
+        chipMeter = findViewById(R.id.chipMeter)
+        tgSel = findViewById(R.id.tgSel)
+        tgMode = findViewById(R.id.tgMode)
+        btnA = findViewById(R.id.btnA)
+        btnB = findViewById(R.id.btnB)
+        tileFocus = findViewById(R.id.tileFocus)
+        tileShutter = findViewById(R.id.tileShutter)
+        tileIso = findViewById(R.id.tileIso)
+        tileComp = findViewById(R.id.tileComp)
+        slider = findViewById(R.id.slider)
+        fab = findViewById(R.id.fab)
 
-    private fun label(t: String, mono: Boolean = false, color: Int = 0xFFEEECE4.toInt()) =
-        TextView(this).apply {
-            text = t; setTextColor(color); textSize = 14f
-            if (mono) typeface = Typeface.MONOSPACE
-        }
-
-    private fun bar(maxV: Int, init: Int, on: (Int) -> Unit) = SeekBar(this).apply {
-        max = maxV; progress = init
-        setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(s: SeekBar, p: Int, user: Boolean) { if (user) on(p) }
-            override fun onStartTrackingTouch(s: SeekBar) {}
-            override fun onStopTrackingTouch(s: SeekBar) {}
-        })
-    }
-
-    private fun row(a: View, b: View, c: View) = LinearLayout(this).apply {
-        gravity = Gravity.CENTER_VERTICAL
-        addView(a, LinearLayout.LayoutParams(dp(112), LinearLayout.LayoutParams.WRAP_CONTENT))
-        addView(b, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        addView(c, LinearLayout.LayoutParams(dp(64), LinearLayout.LayoutParams.WRAP_CONTENT))
-    }
-
-    private fun buildUi() {
-        val amber = 0xFFFFB43A.toInt()
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF0E0E0D.toInt()); fitsSystemWindows = true
-        }
-        val box = FrameLayout(this)
-        tv = AutoFitTextureView(this)
         tv.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(s: SurfaceTexture, w: Int, h: Int) { if (hasPerm()) openCam() }
             override fun onSurfaceTextureSizeChanged(s: SurfaceTexture, w: Int, h: Int) {}
             override fun onSurfaceTextureDestroyed(s: SurfaceTexture) = true
             override fun onSurfaceTextureUpdated(s: SurfaceTexture) {}
         }
-        box.addView(tv, FrameLayout.LayoutParams(-1, -1, Gravity.CENTER))
-        root.addView(box, LinearLayout.LayoutParams(-1, 0, 1f))
 
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF1A1A18.toInt()); setPadding(dp(14), dp(8), dp(14), dp(10))
+        tgSel.addOnButtonCheckedListener { _, id, checked ->
+            if (!checked) return@addOnButtonCheckedListener
+            sel = when (id) {
+                R.id.tileFocus -> Sel.FOCUS
+                R.id.tileShutter -> Sel.SHUTTER
+                R.id.tileIso -> Sel.ISO
+                else -> Sel.COMP
+            }
+            applySel()
         }
-        // 讀數列
-        rT = label("", true, amber); rI = label("", true, amber); rE = label("測光 —", true)
-        panel.addView(LinearLayout(this).apply {
-            addView(rT, LinearLayout.LayoutParams(0, -2, 1f))
-            addView(rI, LinearLayout.LayoutParams(0, -2, 1f))
-            addView(rE, LinearLayout.LayoutParams(0, -2, 1.3f))
-        })
-        // 對焦：滑桿左遠右近
-        val swMF = Switch(this).apply { text = "手動對焦"; setTextColor(0xFFEEECE4.toInt()); isEnabled = minFocus > 0f }
-        sbF = bar(1000, 0) { p -> diopter = p / 1000f * minFocus; push(); refresh() }.apply { isEnabled = false }
-        vF = label("AF", true)
-        swMF.setOnCheckedChangeListener { _, on -> mf = on; sbF.isEnabled = on; push(); refresh() }
-        panel.addView(row(swMF, sbF, vF))
-        // 快門
-        sbT = bar(1000, 0) { p ->
-            tNs = (tLo * (tHi.toDouble() / tLo).pow(p / 1000.0)).toLong(); push(); refresh()
+
+        tgMode.addOnButtonCheckedListener { _, id, checked ->
+            if (updating || !checked) return@addOnButtonCheckedListener
+            when (sel) {
+                Sel.FOCUS -> mf = id == R.id.btnB
+                Sel.ISO -> autoIso = id == R.id.btnA
+                else -> {}
+            }
+            push(); syncSlider(); refresh(false)
         }
-        vT = label("", true)
-        panel.addView(row(label("快門"), sbT, vT))
-        // ISO
-        val swI = Switch(this).apply { text = "自動 ISO"; setTextColor(0xFFEEECE4.toInt()); isChecked = true }
-        sbI = bar(1000, 0) { p ->
-            iso = (isoR.lower * (isoR.upper.toDouble() / isoR.lower).pow(p / 1000.0)).roundToInt(); push(); refresh()
-        }.apply { isEnabled = false }
-        vI = label("", true)
-        swI.setOnCheckedChangeListener { _, on -> autoIso = on; sbI.isEnabled = !on }
-        panel.addView(row(swI, sbI, vI))
-        // 曝光補償（只影響自動 ISO 的目標亮度）
-        vC = label("", true)
-        panel.addView(row(label("補償"), bar(18, 9) { p -> comp = (p - 9) / 3f; refresh() }, vC))
-        // 快門鍵
-        panel.addView(Button(this).apply { text = "拍照"; setOnClickListener { shoot() } })
-        root.addView(panel, LinearLayout.LayoutParams(-1, -2))
-        setContentView(root)
+
+        slider.addOnChangeListener { _, v, fromUser ->
+            if (!fromUser) return@addOnChangeListener
+            when (sel) {
+                Sel.FOCUS -> diopter = v / 1000f * minFocus
+                Sel.SHUTTER -> tNs = (tLo * (tHi.toDouble() / tLo).pow(v / 1000.0)).toLong()
+                Sel.ISO -> iso = (isoR.lower * (isoR.upper.toDouble() / isoR.lower).pow(v / 1000.0)).roundToInt()
+                Sel.COMP -> comp = v / 3f
+            }
+            push(); refresh(false)
+        }
+
+        fab.setOnClickListener { shoot() }
+    }
+
+    /** 切換目前調整的參數：重設滑桿範圍與副選項。 */
+    private fun applySel() {
+        updating = true
+        when (sel) {
+            Sel.FOCUS -> {
+                btnA.text = "AF"; btnB.text = "MF"; btnB.isEnabled = minFocus > 0f
+                tgMode.check(if (mf) R.id.btnB else R.id.btnA)
+            }
+            Sel.ISO -> {
+                btnA.text = "自動"; btnB.text = "手動"; btnB.isEnabled = true
+                tgMode.check(if (autoIso) R.id.btnA else R.id.btnB)
+            }
+            else -> {}
+        }
+        tgMode.visibility = if (sel == Sel.FOCUS || sel == Sel.ISO) View.VISIBLE else View.INVISIBLE
+        if (sel == Sel.COMP) {            // 以三分之一級為單位，範圍正負三級
+            slider.stepSize = 1f; slider.valueFrom = -9f; slider.valueTo = 9f
+        } else {
+            slider.stepSize = 0f; slider.valueFrom = 0f; slider.valueTo = 1000f
+        }
+        updating = false
+        syncSlider()
+    }
+
+    private fun syncSlider() {
+        val v = when (sel) {
+            Sel.FOCUS -> if (minFocus > 0f) diopter / minFocus * 1000f else 0f
+            Sel.SHUTTER -> (ln(tNs.toDouble() / tLo) / ln(tHi.toDouble() / tLo) * 1000).toFloat()
+            Sel.ISO -> (ln(iso.toDouble() / isoR.lower) / ln(isoR.upper.toDouble() / isoR.lower) * 1000).toFloat()
+            Sel.COMP -> (comp * 3f).roundToInt().toFloat()
+        }
+        slider.value = v.coerceIn(slider.valueFrom, slider.valueTo)
+        slider.isEnabled = when (sel) {
+            Sel.FOCUS -> mf
+            Sel.ISO -> !autoIso
+            else -> true
+        }
     }
 
     private fun fmtT(ns: Long): String {
@@ -352,18 +389,16 @@ class MainActivity : Activity() {
         return if (s >= 0.5) "%.1f″".format(s) else "1/${(1 / s).roundToInt()}"
     }
 
-    private fun refresh() {
-        rT.text = fmtT(tNs); rI.text = "ISO $iso"
-        vT.text = fmtT(tNs); vI.text = "$iso"
-        sbT.progress = (ln(tNs.toDouble() / tLo) / ln(tHi.toDouble() / tLo) * 1000).roundToInt().coerceIn(0, 1000)
-        sbI.progress = (ln(iso.toDouble() / isoR.lower) / ln(isoR.upper.toDouble() / isoR.lower) * 1000)
-            .roundToInt().coerceIn(0, 1000)
-        vF.text = when {
+    private fun refresh(sync: Boolean = true) {
+        tileFocus.text = "對焦\n" + when {
             !mf -> "AF"
             diopter < 0.05f -> "∞"
             else -> "%.2f m".format(1f / diopter)
         }
-        vC.text = "%+.1f EV".format(comp)
+        tileShutter.text = "快門\n" + fmtT(tNs)
+        tileIso.text = "ISO\n" + (if (autoIso) "A " else "") + iso
+        tileComp.text = "補償\n" + "%+.1f".format(comp)
+        if (sync) syncSlider()
     }
 
     // ───────── 生命週期 ─────────
