@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.MCamera" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">#FFB95C</item>
+        <item name="colorOnPrimary">#472A00</item>
+        <item name="colorPrimaryContainer">#654000</item>
+        <item name="colorOnPrimaryContainer">#FFDDB3</item>
+        <item name="colorSecondary">#DCC3A1</item>
+        <item name="colorOnSecondary">#3E2D16</item>
+        <item name="colorSecondaryContainer">#56432A</item>
+        <item name="colorOnSecondaryContainer">#FADEBC</item>
+        <item name="colorTertiary">#B9CCA1</item>
+        <item name="colorOnTertiary">#253515</item>
+        <item name="colorTertiaryContainer">#3B4C2A</item>
+        <item name="colorOnTertiaryContainer">#D5E9BC</item>
+    </style>
+</resources>
