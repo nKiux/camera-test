@@ -4,7 +4,7 @@
     <uses-feature android:name="android.hardware.camera.any" />
     <application
         android:label="M 相機"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:theme="@style/Theme.MCamera">
         <activity
             android:name=".MainActivity"
             android:exported="true"
