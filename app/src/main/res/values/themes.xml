@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.MCamera" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">#855400</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#FFDDB3</item>
+        <item name="colorOnPrimaryContainer">#2A1800</item>
+        <item name="colorSecondary">#6F5B40</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+        <item name="colorSecondaryContainer">#FADEBC</item>
+        <item name="colorOnSecondaryContainer">#271904</item>
+        <item name="colorTertiary">#52643F</item>
+        <item name="colorOnTertiary">#FFFFFF</item>
+        <item name="colorTertiaryContainer">#D5E9BC</item>
+        <item name="colorOnTertiaryContainer">#111F03</item>
+    </style>
+
+    <!-- 參數選擇磚：兩行文字，上為名稱、下為目前數值 -->
+    <style name="Widget.MCamera.Tile" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">64dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">4dp</item>
+        <item name="android:paddingEnd">4dp</item>
+        <item name="android:maxLines">2</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
+    <style name="Widget.MCamera.Seg" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:minWidth">0dp</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingEnd">20dp</item>
+    </style>
+</resources>
